@@ -1,0 +1,196 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Organize Auction - Cricket Auction</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=3">
+    <style>
+        /* Specific overrides for this page if needed, but keeping it minimal */
+        .organize-container {
+            max-width: 900px;
+            margin-top: 50px;
+            margin-bottom: 50px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .team-section,
+        .player-section {
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        h2 {
+            color: white;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark shadow glass-navbar">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="{% url 'home' %}">🏏 Cricket Auction</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="{% url 'home' %}">Home</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'auctions' %}">Auctions</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'mybid' %}">My Bids</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'login' %}">Login</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'register' %}">Register</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container organize-container">
+        <h2 class="text-center mb-4 fw-bold">Organize New Auction</h2>
+
+        <div class="glass-card">
+            <!-- ✅ enctype added for image upload -->
+            <form method="POST" action="{% url 'organize_auction' %}" enctype="multipart/form-data">
+                {% csrf_token %}
+
+                <!-- Auction Info -->
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Tournament Name</label>
+                        <input type="text" class="form-control" name="name" required placeholder="e.g. IPL 2025">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Location</label>
+                        <input type="text" class="form-control" name="location" required placeholder="e.g. Mumbai">
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Type</label>
+                        <select class="form-select form-control" name="type" required>
+                            <option value="" class="text-dark">Select Type</option>
+                            <option value="T20" class="text-dark">T20</option>
+                            <option value="ODI" class="text-dark">ODI</option>
+                            <option value="Test" class="text-dark">Test</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Tournament Date</label>
+                        <input type="date" class="form-control" name="tournament_date" required>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Per Team Budget</label>
+                        <input type="number" class="form-control" name="team_budget" required placeholder="₹">
+                    </div>
+                </div>
+
+                <!-- Auction Password -->
+                <div class="mb-4">
+                    <label class="form-label">Auction Password</label>
+                    <input type="password" class="form-control" name="auction_password"
+                        placeholder="Set a password for participants to join" required>
+                </div>
+
+                <hr class="border-secondary my-4">
+
+                <!-- Teams Section -->
+                <h4 class="mb-3 text-white">Teams</h4>
+                <div id="teams-wrapper"></div>
+                <button type="button" class="btn btn-outline-light mb-4" onclick="addTeam()">+ Add Team</button>
+
+                <hr class="border-secondary my-4">
+
+                <!-- Players Section -->
+                <h4 class="mb-3 text-white">Players</h4>
+                <div id="players-wrapper"></div>
+                <button type="button" class="btn btn-outline-light mb-4" onclick="addPlayer()">+ Add Player</button>
+
+                <!-- Buttons -->
+                <div class="text-center mt-5">
+                    <button type="submit" class="btn btn-premium btn-lg w-50">🚀 Start Auction</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let teamCount = 0;
+        let playerCount = 0;
+
+        // ✅ Add Team with image upload field
+        function addTeam() {
+            teamCount++;
+            const wrapper = document.getElementById('teams-wrapper');
+            let teamDiv = document.createElement('div');
+            teamDiv.classList.add('team-section');
+            teamDiv.id = `team-${teamCount}`;
+            teamDiv.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="text-white m-0">Team ${teamCount}</h6>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeTeam(${teamCount})">Remove</button>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Team Name</label>
+                    <input type="text" class="form-control" name="teams[]" required placeholder="Team Name">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Team Logo</label>
+                    <input type="file" class="form-control" name="team_logos[]" accept="image/*">
+                </div>
+            </div>
+        `;
+            wrapper.appendChild(teamDiv);
+        }
+
+        function removeTeam(teamId) {
+            document.getElementById(`team-${teamId}`).remove();
+        }
+
+        // ✅ Add Player with image field
+        function addPlayer() {
+            playerCount++;
+            const wrapper = document.getElementById('players-wrapper');
+            let playerDiv = document.createElement('div');
+            playerDiv.classList.add('player-section');
+            playerDiv.id = `player-${playerCount}`;
+            playerDiv.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="text-white m-0">Player ${playerCount}</h6>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removePlayer(${playerCount})">Remove</button>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Player Name</label>
+                    <input type="text" class="form-control" name="players[]" placeholder="Player Name" required>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Player Image</label>
+                    <input type="file" class="form-control" name="player_images[]" accept="image/*">
+                </div>
+            </div>
+        `;
+            wrapper.appendChild(playerDiv);
+        }
+
+        function removePlayer(playerId) {
+            document.getElementById(`player-${playerId}`).remove();
+        }
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,85 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Cricket Auction</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+
+<body>
+
+    <nav class="navbar navbar-expand-lg navbar-dark shadow glass-navbar">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="/">🏏 Cricket Auction</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a
+                            class="nav-link {% if request.resolver_match.url_name == 'home' %}active{% endif %}"
+                            href="{% url 'home' %}">Home</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'auctions' %}">Auction</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'mybid' %}">My Bids</a></li>
+                    <li class="nav-item"><a
+                            class="nav-link {% if request.resolver_match.url_name == 'login' %}active{% endif %}"
+                            href="{% url 'login' %}">Login</a></li>
+                    <li class="nav-item"><a
+                            class="nav-link {% if request.resolver_match.url_name == 'register' %}active{% endif %}"
+                            href="{% url 'register' %}">Register</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-5" style="position: relative; z-index: 1;">
+        <div class="row justify-content-center">
+            <div class="col-md-5">
+                <div class="glass-card p-5" style="margin-top: 60px; margin-bottom: 60px;">
+                    <div class="text-center mb-4">
+                        <h3 class="fw-bold mb-2" style="font-size: 2.5rem; letter-spacing: -1px; color: white;">Welcome
+                            Back</h3>
+                        <p style="color: rgba(255,255,255,0.7); font-size: 1rem;">Sign in to continue your auction
+                            journey</p>
+                    </div>
+                    {% if error %}
+                    <div class="alert alert-danger">{{ error }}</div>
+                    {% endif %}
+                    <form method="POST">
+                        {% csrf_token %}
+                        <div class="mb-4">
+                            <label class="form-label">Username</label>
+                            <input type="text" name="username" class="form-control" placeholder="Enter your username"
+                                required>
+                        </div>
+                        <div class="mb-4">
+                            <label class="form-label">Password</label>
+                            <input type="password" name="password" class="form-control"
+                                placeholder="Enter your password" required>
+                        </div>
+                        <button type="submit" class="btn btn-premium w-100 mt-3">Sign In</button>
+                    </form>
+                    <p class="mt-4 text-center" style="color: rgba(255,255,255,0.7);">
+                        Don't have an account?
+                        <a href="{% url 'register' %}"
+                            style="color: var(--accent-red); font-weight: 700; text-decoration: none;">Create
+                            Account</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="text-white text-center py-3 mt-5">
+        <p class="mb-0">&copy; 2025 Cricket Auction (OAS). All Rights Reserved.</p>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>

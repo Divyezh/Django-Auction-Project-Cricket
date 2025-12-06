@@ -1,0 +1,441 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ auction.name }} - Auction Room</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=3">
+</head>
+
+<body>
+
+    <div class="auction-room-container">
+
+        <!-- Dynamic Teams -->
+        {# Each team will show a budget. If team.budget exists use it, otherwise use auction.per_team_budget #}
+        {% for team in teams %}
+        <div class="glass-card team-card team-card-corner {% if forloop.counter == 1 %}top-left{% elif forloop.counter == 2 %}top-right{% elif forloop.counter == 3 %}bottom-left{% elif forloop.counter == 4 %}bottom-right{% endif %}"
+            data-team-id="{{ team.id }}">
+
+            {% if team.logo %}
+            <img src="{{ team.logo.url }}" alt="{{ team.name }} Logo" class="team-logo-img">
+            {% else %}
+            <img src="{% static 'images/team_placeholder.jpeg' %}" alt="{{ team.name }} Logo" class="team-logo-img">
+            {% endif %}
+
+            <h3 class="text-white mb-2">{{ team.name }}</h3>
+
+            {# store numeric budget in data-budget so JS can read/update it easily #}
+            <div class="team-budget team-budget-display"
+                data-budget="{{ team.budget|default:auction.per_team_budget }}">
+                Budget: ₹{{ team.budget|default:auction.per_team_budget|floatformat:0 }}
+            </div>
+
+            <button class="btn btn-premium btn-sm bid-button w-100">Bid Now</button>
+        </div>
+        {% endfor %}
+
+        <!-- Player Auction Card -->
+        <div class="player-auction-card-premium player-auction-card">
+            <h1>Player on Auction</h1>
+            <div class="player-info">
+                {% if players and players|length > 0 and players.0.photo %}
+                <img src="{{ players.0.photo.url }}" alt="{{ players.0.name }}"
+                    class="player-image player-image-premium">
+                {% else %}
+                <img src="{% static 'images/player_placeholder.jpeg' %}" alt="Player Image"
+                    class="player-image player-image-premium">
+                {% endif %}
+
+                <h2 id="player-name" class="player-name-premium">
+                    {% if players and players|length > 0 %}
+                    {{ players.0.name }}
+                    {% else %}
+                    No Players Added
+                    {% endif %}
+                </h2>
+
+                <div class="bid-info">
+                    <p class="text-white-50 mb-1">Current Bid</p>
+                    <p class="current-price current-bid-display">₹0</p>
+                </div>
+
+                <div class="timer-container">
+                    <p class="text-white-50 mb-1">Time Remaining</p>
+                    <p class="timer-display timer-display-premium">15s</p>
+                </div>
+            </div>
+            <button id="start-auction-btn" class="btn btn-premium mt-3">Start Bid for this Player</button>
+        </div>
+
+        <button id="leave-auction" class="leave-auction-btn" onclick="leaveAuction()">Leave Auction</button>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Safe JSON passed from Django view.
+            let players = [];
+            try {
+                players = JSON.parse('{{ players_json|default:"[]"|escapejs }}');
+            } catch (e) {
+                console.error('Failed to parse players_json, falling back to empty array', e);
+                players = [];
+            }
+
+            const startButton = document.getElementById('start-auction-btn');
+            const timerContainer = document.querySelector('.timer-container');
+            const timerDisplay = document.querySelector('.timer-display');
+            const playerNameEl = document.getElementById('player-name');
+            const teamCards = document.querySelectorAll('.team-card');
+            const bidButtons = document.querySelectorAll('.bid-button');
+            const currentPriceEl = document.querySelector('.current-price');
+            const playerImageEl = document.querySelector('.player-image');
+
+            let playerIndex = 0;
+            let countdown = null;
+            let botInterval = null;
+            let timeLeft = 15;
+            let lastBidder = null;
+            let currentPrice = 0;
+            let salesLog = []; // Track sales
+
+            // New State Variables
+            let userTeamId = null;
+            let isTeamSelected = false;
+            let botTeams = []; // Array of team elements that are bots
+            let botBidsOnCurrentPlayer = {}; // Map teamId -> count
+
+            // Helper: format INR
+            const formatINR = (n) => "₹" + n.toLocaleString('en-IN');
+
+            // Initialize budgets and Setup Team Selection
+            teamCards.forEach(card => {
+                const budgetDiv = card.querySelector('.team-budget');
+                let raw = budgetDiv.getAttribute('data-budget');
+                let budget = parseInt(raw) || 0;
+                budgetDiv.dataset.budget = budget;
+                budgetDiv.textContent = "Budget: " + formatINR(budget);
+
+                // Initial State: "Select Team"
+                const btn = card.querySelector('.bid-button');
+                btn.textContent = "Select Team";
+                btn.classList.remove('btn-premium');
+                btn.classList.add('btn-outline-light'); // Visual cue for selection
+
+                btn.onclick = () => handleTeamSelection(card);
+            });
+
+            function handleTeamSelection(selectedCard) {
+                if (isTeamSelected) return;
+
+                userTeamId = selectedCard.dataset.teamId;
+                isTeamSelected = true;
+
+                // Identify Bots
+                teamCards.forEach(card => {
+                    const btn = card.querySelector('.bid-button');
+                    if (card.dataset.teamId === userTeamId) {
+                        // User's Team
+                        card.classList.add('border-success'); // Highlight user team
+                        btn.textContent = "Bid Now";
+                        btn.classList.remove('btn-outline-light');
+                        btn.classList.add('btn-premium');
+                        btn.onclick = (e) => handleUserBid(e, card); // Rebind to bid handler
+                    } else {
+                        // Bot Team
+                        botTeams.push(card);
+                        btn.textContent = "Bot";
+                        btn.disabled = true; // User can't click for bots
+                        btn.classList.remove('btn-premium', 'btn-outline-light');
+                        btn.classList.add('btn-secondary');
+                    }
+                });
+
+                alert("Team Selected! You can now start the auction.");
+                startButton.disabled = false; // Enable start button
+            }
+
+            // Load first player
+            function loadPlayer(index) {
+                if (!players.length) {
+                    playerNameEl.textContent = "No Players Added";
+                    currentPrice = 0;
+                    currentPriceEl.textContent = "";
+                    startButton.style.display = 'none';
+                    return;
+                }
+                const p = players[index];
+                playerNameEl.textContent = p.name;
+
+                // Update Image
+                if (p.photo_url) {
+                    playerImageEl.src = p.photo_url;
+                } else {
+                    playerImageEl.src = "{% static 'images/player_placeholder.jpeg' %}";
+                }
+
+                currentPrice = (p.base_price && Number(p.base_price)) ? Number(p.base_price) : 200000;
+                currentPriceEl.textContent = formatINR(currentPrice);
+
+                timerContainer.style.display = 'none';
+
+                // Reset UI for new round
+                if (isTeamSelected) {
+                    const userBtn = document.querySelector(`.team-card[data-team-id="${userTeamId}"] .bid-button`);
+                    if (userBtn) {
+                        userBtn.style.display = 'none';
+                        userBtn.disabled = false;
+                    }
+                }
+
+                startButton.style.display = 'inline-block';
+                lastBidder = null;
+
+                // Reset Bot Bid Counts
+                botBidsOnCurrentPlayer = {};
+                botTeams.forEach(bot => {
+                    botBidsOnCurrentPlayer[bot.dataset.teamId] = 0;
+                });
+            }
+
+            // Auction tick
+            function tick() {
+                timeLeft--;
+                timerDisplay.textContent = timeLeft + 's';
+                if (timeLeft <= 0) {
+                    clearInterval(countdown);
+                    clearInterval(botInterval);
+                    timerDisplay.textContent = 'Player Sold!';
+
+                    // Disable user button
+                    const userBtn = document.querySelector(`.team-card[data-team-id="${userTeamId}"] .bid-button`);
+                    if (userBtn) userBtn.disabled = true;
+
+                    processSale();
+                }
+            }
+
+            // Bot Logic
+            function attemptBotBid() {
+                if (timeLeft <= 1) return; // Don't bid at the very last second to avoid race conditions visually
+
+                // Chance to bid: 30% chance per tick to make it feel organic, 
+                // but we can iterate all bots and see if they *want* to bid.
+
+                // Shuffle bots to randomize order
+                const shuffledBots = [...botTeams].sort(() => 0.5 - Math.random());
+
+                for (let bot of shuffledBots) {
+                    const teamId = bot.dataset.teamId;
+                    const budgetDiv = bot.querySelector('.team-budget');
+                    const budget = parseInt(budgetDiv.dataset.budget) || 0;
+                    const bidCount = botBidsOnCurrentPlayer[teamId] || 0;
+
+                    // Constraints
+                    // 1. Max 3 bids per player
+                    if (bidCount >= 3) continue;
+
+                    // 2. Must have budget
+                    const nextBidAmount = currentPrice + 50000; // Assuming 50k increment
+                    if (budget < nextBidAmount) continue;
+
+                    // 3. Don't bid against self (if already winning)
+                    if (lastBidder && lastBidder.dataset.teamId === teamId) continue;
+
+                    // 4. Random decision factor (e.g., 20% chance to bid on this check)
+                    if (Math.random() > 0.2) continue;
+
+                    // Place Bid
+                    placeBid(bot, nextBidAmount);
+                    botBidsOnCurrentPlayer[teamId] = bidCount + 1;
+                    break; // Only one bot bids at a time per interval tick
+                }
+            }
+
+            function placeBid(teamCard, amount) {
+                currentPrice = amount;
+                currentPriceEl.textContent = formatINR(currentPrice);
+                lastBidder = teamCard;
+
+                clearInterval(countdown);
+                timeLeft = 15;
+                timerDisplay.textContent = timeLeft + 's';
+                countdown = setInterval(tick, 1000);
+
+                // Visual feedback for bot bid?
+                // Maybe flash the card?
+                teamCard.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+                setTimeout(() => {
+                    teamCard.style.backgroundColor = ''; // Revert to CSS class style
+                }, 300);
+            }
+
+            function handleUserBid(e, card) {
+                // User Bid Logic
+                const nextBidAmount = currentPrice + 50000;
+                const budgetDiv = card.querySelector('.team-budget');
+                const budget = parseInt(budgetDiv.dataset.budget) || 0;
+
+                if (budget < nextBidAmount) {
+                    alert("Not enough budget!");
+                    return;
+                }
+
+                placeBid(card, nextBidAmount);
+            }
+
+            // Process sale
+            function processSale() {
+                if (!lastBidder) {
+                    nextPlayer();
+                    return;
+                }
+                const soldPlayerName = players[playerIndex].name;
+                const budgetDiv = lastBidder.querySelector('.team-budget');
+                let budget = parseInt(budgetDiv.dataset.budget) || 0;
+
+                if (budget >= currentPrice) {
+                    budget -= currentPrice;
+                    budgetDiv.dataset.budget = budget;
+                    budgetDiv.textContent = "Budget: " + formatINR(budget);
+
+                    // append sold player under team
+                    const existing = lastBidder.querySelector('.player-sold-container');
+                    if (existing) {
+                        const span = document.createElement('span');
+                        span.className = 'sold-tag';
+                        span.textContent = soldPlayerName;
+                        existing.appendChild(span);
+                    } else {
+                        const container = document.createElement('div');
+                        container.className = 'player-sold-container mt-2';
+                        const span = document.createElement('span');
+                        span.className = 'sold-tag';
+                        span.textContent = soldPlayerName;
+                        container.appendChild(span);
+                        lastBidder.appendChild(container);
+                    }
+
+                    // Log sale
+                    salesLog.push({
+                        team_id: lastBidder.dataset.teamId,
+                        player_id: players[playerIndex].id,
+                        amount: currentPrice
+                    });
+                } else {
+                    // Should not happen with pre-checks, but good fallback
+                    alert(`${lastBidder.querySelector('h3').textContent} does not have enough budget to pay ${formatINR(currentPrice)}. Player unsold.`);
+                }
+
+                setTimeout(nextPlayer, 2000); // Give a bit more time to see result
+            }
+
+            // Move to next player
+            function nextPlayer() {
+                playerIndex++;
+                if (playerIndex >= players.length) {
+                    finishAuction();
+                    return;
+                }
+                loadPlayer(playerIndex);
+            }
+
+            // Finish Auction
+            function finishAuction() {
+                playerNameEl.textContent = "Auction Complete!";
+                currentPriceEl.textContent = "";
+                timerContainer.style.display = 'none';
+                startButton.style.display = 'none';
+
+                if (isTeamSelected) {
+                    const userBtn = document.querySelector(`.team-card[data-team-id="${userTeamId}"] .bid-button`);
+                    if (userBtn) userBtn.style.display = 'none';
+                }
+
+                // Auto-save
+                const container = document.querySelector('.auction-room-container');
+
+                // Show Saving Indicator
+                const savingMsg = document.createElement('div');
+                savingMsg.id = 'saving-msg';
+                savingMsg.className = 'text-center mt-4';
+                savingMsg.innerHTML = '<h3 class="text-white">Saving Auction Results... <span class="spinner-border spinner-border-sm text-light" role="status"></span></h3>';
+                container.appendChild(savingMsg);
+
+                // Trigger Save
+                setTimeout(saveAndFinish, 1500); // Small delay for UX
+            }
+
+            function saveAndFinish() {
+                fetch("{% url 'save_auction_results' %}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ results: salesLog })
+                })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            window.location.href = "{% url 'mybid' %}";
+                        } else {
+                            alert('Error saving results: ' + data.message);
+                            // Allow retry if failed
+                            const savingMsg = document.getElementById('saving-msg');
+                            if (savingMsg) savingMsg.remove();
+
+                            const retryBtn = document.createElement('button');
+                            retryBtn.textContent = "Retry Save";
+                            retryBtn.className = "btn btn-danger btn-lg mt-4 d-block mx-auto";
+                            retryBtn.onclick = saveAndFinish;
+                            document.querySelector('.auction-room-container').appendChild(retryBtn);
+                        }
+                    })
+                    .catch(err => {
+                        alert('Network error: ' + err);
+                        const savingMsg = document.getElementById('saving-msg');
+                        if (savingMsg) savingMsg.remove();
+                    });
+            }
+
+            // Start Button
+            startButton.addEventListener('click', () => {
+                if (!isTeamSelected) {
+                    alert("Please select a team first!");
+                    return;
+                }
+                if (!players.length) { alert('No players to auction'); return; }
+
+                startButton.style.display = 'none';
+                timerContainer.style.display = 'block';
+
+                // Show User Bid Button
+                const userBtn = document.querySelector(`.team-card[data-team-id="${userTeamId}"] .bid-button`);
+                if (userBtn) userBtn.style.display = 'inline-block';
+
+                timeLeft = 15;
+                timerDisplay.textContent = timeLeft + 's';
+
+                countdown = setInterval(tick, 1000);
+                botInterval = setInterval(attemptBotBid, 1500); // Bots check every 1.5s
+            });
+
+            // Leave Auction
+            window.leaveAuction = function () {
+                if (confirm("Are you sure you want to leave the auction?")) {
+                    window.location.href = "{% url 'auctions' %}";
+                }
+            };
+
+            // Init
+            startButton.disabled = true; // Disable until team selected
+            loadPlayer(playerIndex);
+        });
+    </script>
+
+</body>
+
+</html>

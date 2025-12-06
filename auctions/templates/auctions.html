@@ -1,0 +1,109 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auctions - Cricket Auction</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+
+<body>
+
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark shadow glass-navbar">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="{% url 'home' %}">🏏 Cricket Auction</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="{% url 'home' %}">Home</a></li>
+                    <li class="nav-item"><a class="nav-link active" href="{% url 'auctions' %}">Auctions</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'mybid' %}">My Bids</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'login' %}">Login</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'register' %}">Register</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-5">
+        <h2 class="text-center mb-5 fw-bold text-white">🔨 Ongoing Auctions</h2>
+
+        <div class="row justify-content-center">
+            {% for auction in auctions %}
+            <div class="col-md-8">
+                <div class="glass-card" data-auction-id="{{ auction.id }}">
+                    <!-- Auction Status -->
+                    <div class="auction-status">Ongoing</div>
+
+                    <div class="auction-header">{{ auction.name }}</div>
+
+                    <div class="auction-detail"><strong>Location:</strong> {{ auction.location }}</div>
+                    <div class="auction-detail"><strong>Type:</strong> {{ auction.type }}</div>
+                    <div class="auction-detail"><strong>Date:</strong> {{ auction.tournament_date }}</div>
+                    <div class="auction-detail"><strong>Budget per Team:</strong> ₹{{ auction.per_team_budget }}</div>
+
+                    {% if auction.start_time %}
+                    <div class="auction-detail"><strong>Auction Start:</strong> {{ auction.start_time|date:"d M Y H:i"
+                        }}</div>
+                    {% endif %}
+                    {% if auction.end_time %}
+                    <div class="auction-detail"><strong>Auction End:</strong> {{ auction.end_time|date:"d M Y H:i" }}
+                    </div>
+                    {% endif %}
+                    {% if auction.description %}
+                    <div class="auction-detail"><strong>Description:</strong> {{ auction.description }}</div>
+                    {% endif %}
+
+                    <!-- Password Input Form -->
+                    <form method="POST" action="{% url 'join_auction' auction.id %}" class="password-form">
+                        {% csrf_token %}
+                        <div class="password-box">
+                            <input type="password" name="password" class="form-control password-input"
+                                placeholder="Enter Auction Password" required>
+                        </div>
+
+                        <!-- Join Auction Button -->
+                        <button type="submit" class="btn btn-premium w-100 mt-3"
+                            onclick="return validatePassword(event, this)">
+                            Join Auction
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% empty %}
+            <p class="text-center fs-5">No ongoing auctions yet.</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <footer class="bg-dark text-white text-center py-3 mt-5">
+        <p class="mb-0">&copy; 2025 Cricket Auction (OAS). All Rights Reserved.</p>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        function validatePassword(event, btn) {
+            const form = btn.closest('form');
+            const password = form.querySelector('.password-input').value.trim();
+
+            if (!password) {
+                alert('⚠️ Please enter the auction password first.');
+                event.preventDefault();
+                return false;
+            }
+
+            return true;
+        }
+    </script>
+
+</body>
+
+</html>
